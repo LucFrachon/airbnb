@@ -14,8 +14,6 @@ Author: Luc Frachon
 #from frange import *
 import pandas as pd
 import collections
-from random import randint
-from time import sleep
 import urllib2
 import json
 
@@ -53,10 +51,10 @@ def full_listing_search(location, min_price = 20, max_price = 1000, price_bands 
 
                         # send request and get results
                         req = urllib2.Request(full_url, headers = hdr)
-                        print "\nRetrieving data from URL %s" %(full_url)
+                        print "\nRetrieving listing data from URL %s" %(full_url)
 
-                        # introduce a random pause then execute request
-                        sleep(randint(0., 1.))  
+                        # execute request
+                        #sleep(randint(0., 1.))  
                         open_url = urllib2.urlopen(req)
 
                         # returned codes from HTTP request
@@ -71,12 +69,12 @@ def full_listing_search(location, min_price = 20, max_price = 1000, price_bands 
                         listings.extend(json_search_results['search_results'])
                         print "length: " + str(num_added_items)
                 
-                        # request was executed successfully (which causes exit form the for loop)
+                        # request was executed successfully (which causes exit from the for loop)
                         success = True
                         
                     except:
                         print "This URL has not returned any results. Depending on settings, I may try again."
-
+                        num_added_items = 0
             
             # increment offset for next request
             offset += MAX_LISTINGS_PER_SEARCH
@@ -96,7 +94,7 @@ def full_listing_search(location, min_price = 20, max_price = 1000, price_bands 
 
 def convert_to_dataframe(records_dict):
 
-    return pd.DataFrame.from_dict(records_dict, orient = 'index', dtype = 'int')
+    return pd.DataFrame.from_dict(records_dict, orient = 'index', dtype = 'float')
 
 
 def extract_userids(listings):  #TODO: write extract_userids function
@@ -105,15 +103,63 @@ def extract_userids(listings):  #TODO: write extract_userids function
     in those listings.
     Returns: A Python list.
     """
-    return
+    userids = []
+
+    # loop through each listing
+    for listing in listings:
+        try:
+            #print "userids:", listing['primary_host']['id']
+            userids.append(listing['listing']['primary_host']['id'])
+        except KeyError:
+            next                                 
+    return userids
+
 
 def get_hosts_listings(userids):  #TODO: write get_hosts_listings function
     """
     Takes a list of user ids and collects all listings belonging to these hosts.
     Returns: A Python dictionary converted from a JSON file.
     """
-    #for each userid in userids:
-        #execute HTTP GET https://api.airbnb.com/v2/listings/?client_id=3092nxybyb0otqw18e8nh5nty&user_id=...
-        #add returned data to dict, using userid as the key
-    return
+    
+    url = 'https://api.airbnb.com/v2/listings/?client_id=3092nxybyb0otqw18e8nh5nty&user_id='
+    users_listings = collections.defaultdict(dict)
+    success = False  # was the request successful? If not, may try again
 
+    #for each userid in userids:
+    for user in userids:
+        print "\nUser id: " + str(user)
+        room_ratings = []
+        num_ratings = 0
+        # send request and get results 
+        req = urllib2.Request(url + str(user), headers = hdr)
+        print "\nRetrieving user data from URL %s" %(url)
+
+        # execute request
+        #sleep(randint(0., 1.))  
+        open_url = urllib2.urlopen(req)
+
+        # returned codes from HTTP request
+        #code = open_url.getcode()
+
+        # convert returned JSON into Python dictionary
+        json_search_results = json.loads(open_url.read())
+        # store the user's name
+        user_name = json_search_results['listings'][0]['user']['first_name']
+
+        # make a list of the user's property ratings
+        num_listings = len(json_search_results['listings'])
+
+        # store user's room ratings and number of ratings
+        room_ratings.extend(json_search_results['listings'][room]['star_rating'] \
+            for room in range(num_listings) \
+            if json_search_results['listings'][room]['star_rating'] is not None)
+        num_ratings += sum(json_search_results['listings'][room]['reviews_count'] \
+            for room in range(num_listings))
+
+        # compute the this user's statistics
+        users_listings[user]['name'] = user_name.encode('utf-8').strip()
+        users_listings[user]['num_rooms'] = num_listings
+        users_listings[user]['num_ratings'] = num_ratings
+        users_listings[user]['avg_rating'] = sum(room_ratings) / num_listings
+
+    return users_listings
